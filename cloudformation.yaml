@@ -88,6 +88,24 @@ Parameters:
     Type: String
 
 
+  HostedZone: 
+    Description: The name of the zone where we put DNS recordsets
+    Default: io.nuxeo.com
+    Type: String
+
+  RancherEndPoint:
+    Description: Rancher endpoint in the hosted zone
+    Default: rancherdev.io.nuxeo.com
+    Type: String
+
+  GogetaCatchall:
+    Description: Catchall adress in the hosted zone to Gogeta instances    
+    Default: "*.dev.io.nuxeo.com"
+    ConstraintDescription: "must start with a *."
+    AllowedPattern: "\\*\\..*"
+    Type: String
+
+
 
 
 
@@ -277,8 +295,6 @@ Resources:
 
 
 
-
-
   BastionInstance:
     Type: "AWS::EC2::Instance"
     DependsOn: IgAttachment
@@ -298,6 +314,8 @@ Resources:
         - Key: Name
           Value: !Sub "${AWS::StackName}-bastion-instance"
       
+  
+
   # Rancher HA infrastructure
   # Rancher server has its own infrastructure
   # 2 App server + 1 Aurora DB
@@ -476,7 +494,7 @@ Resources:
       KeyName: !Ref KeyPair
       SecurityGroups: 
         - !Ref "RancherSG"
-      UserData: !
+      UserData: 
         Fn::Base64:
           !Sub
             - |
@@ -510,4 +528,169 @@ Resources:
             - mysqlhost: !GetAtt [ RancherDB, Endpoint.Address ]
               mysqlport: !GetAtt [ RancherDB, Endpoint.Port ] 
 
+
+  ClusterSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs "" ]
+      CidrBlock: "10.0.10.0/24"
+      VpcId: !Ref CloudVPC
+      Tags: 
+        - Key: IoCluster
+          Value: !Ref "AWS::StackName"
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-cluster-subnet-a"      
+  
+  ClusterSubnetARouteAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      SubnetId: !Ref ClusterSubnetA
+
+  ClusterSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs "" ]
+      CidrBlock: "10.0.11.0/24"
+      VpcId: !Ref CloudVPC
+      Tags: 
+        - Key: IoCluster
+          Value: !Ref "AWS::StackName"
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-cluster-subnet-b"      
+  
+  ClusterSubnetBRouteAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      SubnetId: !Ref ClusterSubnetB
+
+  ClusterSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Security Group for the cluster"
+      SecurityGroupIngress: 
+        - SourceSecurityGroupId: !Ref BastionSG
+          FromPort: "22"
+          IpProtocol: "tcp"
+          ToPort: "22"
+        - SourceSecurityGroupId: !Ref ELBSG
+          FromPort: "7777"
+          IpProtocol: "tcp"
+          ToPort: "7777"
+      VpcId: !Ref CloudVPC
+      Tags: 
+        - Key: IoCluster
+          Value: !Ref "AWS::StackName"
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-cluster-sg"      
+
+  ClusterSGAllowAllInternal:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref ClusterSG
+      GroupId: !Ref ClusterSG
+
+  ClusterSGAllowAllICMP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: -1
+      ToPort: -1
+      IpProtocol: icmp
+      SourceSecurityGroupId: !Ref ClusterSG
+      GroupId: !Ref ClusterSG
+
+  
+  GogetaHttpLB:
+    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
+    DependsOn: IgAttachment
+    Properties:
+      ConnectionDrainingPolicy:
+        Enabled: "true"
+        Timeout: "300"
+      CrossZone: true
+      HealthCheck:
+        HealthyThreshold: "3"
+        Interval: "30"
+        Target: TCP:8080
+        Timeout: "5"
+        UnhealthyThreshold: "5"
+
+      Listeners:
+        - InstancePort: 7777
+          LoadBalancerPort: 80
+          Protocol: HTTP
+      SecurityGroups: 
+        - !Ref "ELBSG"
+      Subnets:
+        - !Ref "PublicSubnetA"        
+        - !Ref "PublicSubnetB"        
+      Tags: 
+        - Key: IoCluster
+          Value: !Ref "AWS::StackName"
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-gogeta-http-lb"      
+
+
+  AgentClusterAutoScale:
+    Type: "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      AvailabilityZones: 
+        - !Select [ 0, !GetAZs  ""]
+        - !Select [ 1, !GetAZs  ""]
+      DesiredCapacity: !FindInMap [ Profiles, !Ref Profile, InitialClusterSize ]
+      LaunchConfigurationName: !Ref "AgentClusterLaunchConfig"
+      LoadBalancerNames: [!Ref "GogetaHttpLB"]
+      MaxSize: 12
+      MinSize: 1
+      Tags: 
+        - Key: IoCluster
+          Value: !Ref "AWS::StackName"
+          PropagateAtLaunch: true
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-rancher-agent-autoscale"      
+          PropagateAtLaunch: false
+      VPCZoneIdentifier: 
+         - !Ref "ClusterSubnetA"
+         - !Ref "ClusterSubnetB"
+         
+  AgentClusterLaunchConfig:  
+    Type: "AWS::AutoScaling::LaunchConfiguration"    
+    Properties:
+      AssociatePublicIpAddress: false
+      BlockDeviceMappings: 
+        - DeviceName: "/dev/sda1"
+          Ebs: 
+            DeleteOnTermination:  true
+            VolumeSize: "20"
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
+      InstanceType: !FindInMap [ Profiles, !Ref Profile, RancherInstanceType ]
+      KeyName: !Ref KeyPair
+      SecurityGroups: 
+        - !Ref "RancherSG"
+      UserData: ""
+
+
+  RancherDNSRecord:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Type: CNAME
+      TTL: 300
+      HostedZoneName: !Sub "${HostedZone}."
+      Name: !Ref RancherEndPoint
+      ResourceRecords: 
+        - !GetAtt [ RancherHttpLB, DNSName ]
+
+  GogetaDNSRecord:
+    Type: "AWS::Route53::RecordSet"
+    Properties:
+      Type: CNAME
+      TTL: 300
+      HostedZoneName: !Sub "${HostedZone}."
+      Name: !Ref GogetaCatchall
+      ResourceRecords: 
+        - !GetAtt [ GogetaHttpLB, DNSName ]
 
