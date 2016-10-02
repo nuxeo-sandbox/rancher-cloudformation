@@ -285,6 +285,7 @@ Resources:
       GroupDescription: "Enable HTTP access to ELBs"
       SecurityGroupIngress: 
         - { CidrIp: "0.0.0.0/0", FromPort: "80", IpProtocol: "tcp", ToPort: "80"}
+        - { CidrIp: "0.0.0.0/0", FromPort: "443", IpProtocol: "tcp", ToPort: "443"}
       VpcId: !Ref CloudVPC
       Tags: 
         - Key: IoCluster
@@ -368,6 +369,14 @@ Resources:
           FromPort: "8080"
           IpProtocol: "tcp"
           ToPort: "8080"
+        - SourceSecurityGroupId: !Ref ELBSG
+          FromPort: "80"
+          IpProtocol: "tcp"
+          ToPort: "8080"
+        - SourceSecurityGroupId: !Ref ELBSG
+          FromPort: "443"
+          IpProtocol: "tcp"
+          ToPort: "8080"
       VpcId: !Ref CloudVPC
       Tags: 
         - Key: IoCluster
@@ -381,6 +390,15 @@ Resources:
       FromPort: 0
       ToPort: 65535
       IpProtocol: tcp
+      SourceSecurityGroupId: !Ref RancherSG
+      GroupId: !Ref RancherSG
+
+  RancherSGAllowAllInternalUDP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: udp
       SourceSecurityGroupId: !Ref RancherSG
       GroupId: !Ref RancherSG
 
@@ -438,14 +456,20 @@ Resources:
       HealthCheck:
         HealthyThreshold: "3"
         Interval: "30"
-        Target: TCP:8080
+        Target: TCP:80
         Timeout: "5"
         UnhealthyThreshold: "5"
 
       Listeners:
-        - InstancePort: 8080
+        - InstancePort: 80
           LoadBalancerPort: 80
-          Protocol: HTTP
+          Protocol: TCP
+        - InstancePort: 443
+          LoadBalancerPort: 443
+          Protocol: TCP
+        - InstancePort: 8080
+          LoadBalancerPort: 8080
+          Protocol: TCP
       SecurityGroups: 
         - !Ref "ELBSG"
       Subnets:
@@ -464,7 +488,7 @@ Resources:
       AvailabilityZones: 
         - !Select [ 0, !GetAZs  ""]
         - !Select [ 1, !GetAZs  ""]
-      DesiredCapacity: 1
+      DesiredCapacity: 3
       LaunchConfigurationName: !Ref "RancherClusterLaunchConfig"
       LoadBalancerNames: [!Ref "RancherHttpLB"]
       MaxSize: 3
@@ -475,7 +499,7 @@ Resources:
           PropagateAtLaunch: true
         - Key: Name
           Value: !Sub "${AWS::StackName}-rancher-autoscale"      
-          PropagateAtLaunch: false
+          PropagateAtLaunch: true
       VPCZoneIdentifier: 
          - !Ref "RancherSubnetA"
          - !Ref "RancherSubnetB"
@@ -516,15 +540,15 @@ Resources:
 
               sudo systemctl enable docker
 
-              sudo docker run -d -p 8080:8080 \
-                -e CATTLE_DB_CATTLE_MYSQL_HOST=${mysqlhost} \
-                -e CATTLE_DB_CATTLE_MYSQL_PORT=${mysqlport} \
-                -e CATTLE_DB_CATTLE_MYSQL_NAME=rancherdb \
-                -e CATTLE_DB_CATTLE_USERNAME=rancher \
-                -e CATTLE_DB_CATTLE_PASSWORD=rancherpassword \
-                -v /var/run/docker.sock:/var/run/docker.sock \
-                --name rancher-server \
-                rancher/server
+              #sudo docker run -d -p 8080:8080 \
+              #  -e CATTLE_DB_CATTLE_MYSQL_HOST=${mysqlhost} \
+              #  -e CATTLE_DB_CATTLE_MYSQL_PORT=${mysqlport} \
+              #  -e CATTLE_DB_CATTLE_MYSQL_NAME=rancherdb \
+              #  -e CATTLE_DB_CATTLE_USERNAME=rancher \
+              #  -e CATTLE_DB_CATTLE_PASSWORD=rancherpassword \
+              #  -v /var/run/docker.sock:/var/run/docker.sock \
+              #  --name rancher-server \
+              #   rancher/server
             - mysqlhost: !GetAtt [ RancherDB, Endpoint.Address ]
               mysqlport: !GetAtt [ RancherDB, Endpoint.Port ] 
 
@@ -593,6 +617,15 @@ Resources:
       IpProtocol: tcp
       SourceSecurityGroupId: !Ref ClusterSG
       GroupId: !Ref ClusterSG
+  
+  ClusterSGAllowAllInternalUDP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: udp
+      SourceSecurityGroupId: !Ref ClusterSG
+      GroupId: !Ref ClusterSG
 
   ClusterSGAllowAllICMP:
     Type: AWS::EC2::SecurityGroupIngress
@@ -652,7 +685,7 @@ Resources:
           PropagateAtLaunch: true
         - Key: Name
           Value: !Sub "${AWS::StackName}-rancher-agent-autoscale"      
-          PropagateAtLaunch: false
+          PropagateAtLaunch: true
       VPCZoneIdentifier: 
          - !Ref "ClusterSubnetA"
          - !Ref "ClusterSubnetB"
@@ -671,7 +704,29 @@ Resources:
       KeyName: !Ref KeyPair
       SecurityGroups: 
         - !Ref "RancherSG"
-      UserData: ""
+      UserData: 
+        Fn::Base64:
+          !Sub
+            - |
+              #!/bin/bash
+
+              sudo apt-get update
+              sudo apt-get install -y apt-transport-https ca-certificates
+              sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+
+              echo deb https://apt.dockerproject.org/repo ubuntu-wily main > /etc/apt/sources.list.d/docker.list
+
+              sudo apt-get update
+              sudo apt-get purge lxc-docker
+              apt-cache policy docker-engine
+
+              sudo apt-get install -y linux-image-extra-$(uname -r) linux-image-extra-virtual
+              sudo apt-get install -y docker-engine
+              sudo service docker start
+
+              sudo systemctl enable docker
+            - rancherhost: !Ref RancherEndPoint
+              
 
 
   RancherDNSRecord:
