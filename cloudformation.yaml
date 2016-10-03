@@ -30,6 +30,7 @@ Mappings:
       DBBackupRetentionPeriod: 0
       DBInstanceType: db.t2.medium
       RancherInstanceType: t2.large
+      ClusterInstanceType: t2.large
       DBMultiAZ: false
 
     preprod:
@@ -38,6 +39,7 @@ Mappings:
       DBBackupRetentionPeriod: 1
       DBInstanceType: db.m3.large
       RancherInstanceType: m3.large
+      ClusterInstanceType: m3.xlarge
       DBMultiAZ: true
 
     prod:
@@ -46,6 +48,7 @@ Mappings:
       DBBackupRetentionPeriod: 7
       DBInstanceType: db.m3.large
       RancherInstanceType: c3.2xlarge
+      ClusterInstanceType: m3.2xlarge
       DBMultiAZ: true
 
 Outputs:
@@ -286,6 +289,7 @@ Resources:
       SecurityGroupIngress: 
         - { CidrIp: "0.0.0.0/0", FromPort: "80", IpProtocol: "tcp", ToPort: "80"}
         - { CidrIp: "0.0.0.0/0", FromPort: "443", IpProtocol: "tcp", ToPort: "443"}
+        - { CidrIp: "0.0.0.0/0", FromPort: "8080", IpProtocol: "tcp", ToPort: "8080"}
       VpcId: !Ref CloudVPC
       Tags: 
         - Key: IoCluster
@@ -376,7 +380,7 @@ Resources:
         - SourceSecurityGroupId: !Ref ELBSG
           FromPort: "443"
           IpProtocol: "tcp"
-          ToPort: "8080"
+          ToPort: "8080"      
       VpcId: !Ref CloudVPC
       Tags: 
         - Key: IoCluster
@@ -391,6 +395,15 @@ Resources:
       ToPort: 65535
       IpProtocol: tcp
       SourceSecurityGroupId: !Ref RancherSG
+      GroupId: !Ref RancherSG
+
+  RancherSGAllowAllFromCluster:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      FromPort: 0
+      ToPort: 65535
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref ClusterSG
       GroupId: !Ref RancherSG
 
   RancherSGAllowAllInternalUDP:
@@ -602,6 +615,10 @@ Resources:
           FromPort: "7777"
           IpProtocol: "tcp"
           ToPort: "7777"
+        - SourceSecurityGroupId: !Ref RancherSG
+          FromPort: "0"
+          IpProtocol: "tcp"
+          ToPort: "65535"
       VpcId: !Ref CloudVPC
       Tags: 
         - Key: IoCluster
@@ -648,7 +665,7 @@ Resources:
       HealthCheck:
         HealthyThreshold: "3"
         Interval: "30"
-        Target: TCP:8080
+        Target: TCP:7777
         Timeout: "5"
         UnhealthyThreshold: "5"
 
@@ -700,7 +717,7 @@ Resources:
             DeleteOnTermination:  true
             VolumeSize: "20"
       ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
-      InstanceType: !FindInMap [ Profiles, !Ref Profile, RancherInstanceType ]
+      InstanceType: !FindInMap [ Profiles, !Ref Profile, ClusterInstanceType ]
       KeyName: !Ref KeyPair
       SecurityGroups: 
         - !Ref "RancherSG"
