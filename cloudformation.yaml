@@ -70,7 +70,7 @@ Parameters:
     AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
     ConstraintDescription: "must be a valid IP CIDR range of the form x.x.x.x/x."
     Default: "0.0.0.0/0"
-    Description: "The net block (CIDR) taht SSH is available to."
+    Description: "The net block (CIDR) that SSH is available to."
     MaxLength: "18"
     MinLength: "9"
     Type: "String"
@@ -318,6 +318,8 @@ Resources:
           Value: !Ref "AWS::StackName"
         - Key: Name
           Value: !Sub "${AWS::StackName}-bastion-instance"
+        - Key: Role
+          Value: bastion
       
   
 
@@ -456,7 +458,9 @@ Resources:
         - Key: IoCluster
           Value: !Ref "AWS::StackName"
         - Key: Name
-          Value: !Sub "${AWS::StackName}-rancher-db"      
+          Value: !Sub "${AWS::StackName}-rancher-db"
+        - Key: Role
+          Value: rancherdb
 
   RancherHttpLB:
     Type: "AWS::ElasticLoadBalancing::LoadBalancer"
@@ -513,6 +517,8 @@ Resources:
         - Key: Name
           Value: !Sub "${AWS::StackName}-rancher-autoscale"      
           PropagateAtLaunch: true
+        - Key: Role
+          Value: rancherserver
       VPCZoneIdentifier: 
          - !Ref "RancherSubnetA"
          - !Ref "RancherSubnetB"
@@ -703,6 +709,8 @@ Resources:
         - Key: Name
           Value: !Sub "${AWS::StackName}-rancher-agent-autoscale"      
           PropagateAtLaunch: true
+        - Key: Role
+          Value: rancheragent
       VPCZoneIdentifier: 
          - !Ref "ClusterSubnetA"
          - !Ref "ClusterSubnetB"
