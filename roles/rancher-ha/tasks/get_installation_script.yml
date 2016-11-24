@@ -1,5 +1,9 @@
 ---
 
+- name: Check existence of rancher-ha.sh
+  stat: path=/var/lib/rancher/rancher-ha.sh
+  register: rancher_ha_script
+
 - name: Start rancher single node  
   docker:
     name: rancher-single-node
@@ -15,28 +19,27 @@
       CATTLE_DB_CATTLE_USERNAME: "rancher"
       CATTLE_DB_CATTLE_PASSWORD: "rancherpassword"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-  when: inventory_hostname == groups["rancher-dev-server"][0] 
+      - /var/run/docker.sock:/var/run/docker.sock  
+  when: "{{not rancher_ha_script.stat.exists | bool }}"
 
 - name: Wait for Rancher single to be available
   wait_for: host={{groups["rancher-dev-server"][0]}} port=8080 delay=10 timeout=320 state=started
-  when: inventory_hostname == groups["rancher-dev-server"][0] 
+  when: "{{not rancher_ha_script.stat.exists | bool }}"
 
-
-
-- name: Generate installation script
-  shell: curl http://{{groups['rancher-dev-server'][0]}}:8080/v1/haconfigs/haconfig/?action=createscript -d 'hostRegistrationUrl=https://{{ rancher_host }}&clusterSize=3&httpsPort=443&httpPort=80&swarmPort=2376&ppHttpsPort=444&ppHttpPort=81&redisPort=6379&zookeeperClientPort=2181&zookeeperQuorumPort=2888&zookeeperLeaderPort=3888' > /tmp/rancher-ha.sh
 
 - name: Enable HA
   shell: curl -XPUT http://{{groups['rancher-dev-server'][0]}}:8080/v1/haconfigs/haconfig -d '{"id":"haConfig","type":"haConfig","enabled":true,"dbHost":"{{ mysql_host }}","clusterSize":3}'
+  when: "{{not rancher_ha_script.stat.exists | bool }}"
 
-- name: Get installation script
-  fetch: src=/tmp/rancher-ha.sh dest=/tmp/rancherha.sh flat=yes
-  when: inventory_hostname == groups["rancher-dev-server"][0] 
+- name: Generate installation script
+  shell: curl http://{{groups['rancher-dev-server'][0]}}:8080/v1/haconfigs/haconfig/?action=createscript -d 'hostRegistrationUrl=https://{{ rancher_host }}&clusterSize=3&httpsPort=443&httpPort=80&swarmPort=2376&ppHttpsPort=444&ppHttpPort=81&redisPort=6379&zookeeperClientPort=2181&zookeeperQuorumPort=2888&zookeeperLeaderPort=3888' > /var/lib/rancher/rancher-ha.sh
+  when: "{{not rancher_ha_script.stat.exists | bool }}"
+
+- name: Fetch installation script locally
+  fetch: src=/var/lib/rancher/rancher-ha.sh dest=tmp/rancherha.sh flat=yes
 
 - name: Stop Rancher single node docker container
   docker: 
     name: rancher-single-node
     image: rancher/server
     state: absent
-  when: inventory_hostname == groups["rancher-dev-server"][0] and (not rancher_sn_installed|bool)

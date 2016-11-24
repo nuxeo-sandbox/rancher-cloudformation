@@ -1,0 +1,28 @@
+---
+
+- name: Find rancher-server hostname
+  set_fact:
+    hname: rancher-server-{{ groups['rancher-server'].index(inventory_hostname) + 1 }}
+  when: "'rancher-server' in group_names"
+
+- name: Find rancher-agent hostname
+  set_fact:
+    hname: rancher-agent-{{ groups['rancher-agent'].index(inventory_hostname) + 1 }}
+  when: "'rancher-agent' in group_names"
+
+- name: Find bastion hostname
+  set_fact:
+    hname: bastion
+  when: "'rancher-bastion' in group_names"
+
+- name: Set hostname
+  shell: hostname {{ hname }}
+
+- name: Update /etc/hostname
+  shell: echo -n {{ hname }} > /etc/hostname
+
+- name: Backup hosts
+  shell: cp /etc/hosts /etc/hosts.bak
+
+- name: Set /etc/hosts
+  template: src=hosts.j2 dest=/etc/hosts

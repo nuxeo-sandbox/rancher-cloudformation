@@ -16,6 +16,9 @@
     - atop
     - sysstat
 
+- name: Set hosts
+  include: set_hosts.yml
+
 - name: pip httplib2
   # ansible uri module requires httplib2
   pip: name=httplib2 extra_args="--user"

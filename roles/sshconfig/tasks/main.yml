@@ -1,6 +1,6 @@
 ---
 
 - name: Create local ssh.cfg to tunnel ssh connections thru bastion
-  template: src=ssh.cfg.j2 dest=/tmp/ssh.cfg
+  template: src=ssh.cfg.j2 dest=tmp/ssh.cfg
   delegate_to: localhost
 

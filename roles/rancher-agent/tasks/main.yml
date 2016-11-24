@@ -1,5 +1,10 @@
 ---
 
+- name: Wait for rancher to be available on public HTTP URL
+  wait_for: host={{rancher_host}} port=80 delay=10 timeout=320 state=started
+
+- name: Wait for rancher to be available on public HTTPs URL
+  wait_for: host={{rancher_host}} port=443 delay=10 timeout=320 state=started
 
 - name: Get registration token
   uri:

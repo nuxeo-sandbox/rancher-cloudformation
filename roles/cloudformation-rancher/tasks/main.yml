@@ -14,3 +14,11 @@
       AgentCatchAll: "{{ rancher_agent_endpoint }}"
       Environment: "{{ aws_environment }}"
   register: cf_rancher
+
+- name: Pause if changed
+  pause: seconds=15
+  when: cf_rancher.changed
+
+- name : Refresh inventory if needed
+  meta: refresh_inventory
+  when: cf_rancher.changed

@@ -13,15 +13,14 @@
   roles:
     - role: sshconfig
       bastion_host : "{{hostvars[groups['rancher-bastion'][0]]['ec2_ip_address']}}"
+      when: "({{groups['rancher-bastion'] | length}} > 0 | bool)"
 
-- hosts: rancher-dev
+- hosts: rancher
   tags: ensurepython
   gather_facts: False
   tasks:
-  - name: install python 2
+  - name: Ensure python is installed
     raw: sudo bash -c "test -e /usr/bin/python || (apt -qqy update && apt install -qy python-minimal)"
-
-
 
 - name: Install common packages
   hosts: rancher
@@ -32,7 +31,7 @@
       inventory_groups: rancher-dev      
 
 - name: Install Docker
-  hosts: rancher-server:rancher-agent-default
+  hosts: rancher-server:rancher-agent
   become: yes
   roles:
     - angstwad.docker_ubuntu
@@ -49,10 +48,9 @@
       mysql_username: rancher
       mysql_password: rancherpassword
 
-
 - name: Deploy Rancher agents
-  hosts: rancher-agent-default
+  hosts: rancher-agent
   become: yes
   roles:
-      - role: rancher-agent
-        rancher_host: rancherdev.io.nuxeo.com
+    - role: rancher-agent
+      rancher_host: rancherdev.io.nuxeo.com

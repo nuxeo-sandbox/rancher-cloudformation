@@ -8,8 +8,8 @@
       
 
 - name: Deploy Rancher agents
-  hosts: rancher-agent-default
+  hosts: rancher-agent
   become: yes
   roles:
-      - role: rancher-agent
-        rancher_host: rancherdev.io.nuxeo.com
+    - role: rancher-agent
+      rancher_host: rancherdev.io.nuxeo.com

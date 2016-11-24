@@ -1,3 +1,5 @@
 venv
 *.pyc
-ssh.cfg
+tmp/ssh.cfg
+tmp/rancherha.sh
+*.retry

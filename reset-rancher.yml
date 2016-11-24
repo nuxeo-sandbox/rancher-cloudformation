@@ -1,0 +1,18 @@
+---
+
+- hosts: rancher  
+  gather_facts: False
+  tasks:
+  
+  - name: Remove all docker containers
+    shell: "docker ps -a | awk '{print $1}' | grep -v CONTAINER | while read i; do docker rm -fv $i;done"
+
+  - name: Remove Rancher database 
+    mysql_db:
+      name: rancher
+      login_host: "{{ mysql_host }}"
+      login_port: "{{ mysql_port }}"
+      login_user: rancher
+      login_password: rancherpassword
+      state: absent
+    when: inventory_hostname == groups["rancher-server"][0] 
