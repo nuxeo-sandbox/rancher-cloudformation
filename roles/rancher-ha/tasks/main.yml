@@ -1,0 +1,44 @@
+---
+
+- name: Check if Rancher Single node is installed 
+  command: /usr/bin/docker inspect rancher-single-node
+  register: rancher_result
+  when: inventory_hostname == groups["rancher-dev-server"][0]
+  ignore_errors: true
+
+- name: Define Variable
+  set_fact:
+    rancher_sn_installed: "{{ rancher_result.rc  == 0 }}"
+  when: inventory_hostname == groups["rancher-dev-server"][0]
+
+
+#- name: Check if Rancher Single node is installed (on port 8080)
+#  uri: url=http://{{ rancher_host }}:8080/
+#  register: rancher_sn_installed
+#  when: not rancher_installed and inventory_hostname == groups["rancher-dev-server"][0]
+
+- name: Create database rancher 
+  mysql_db:
+    name: rancher
+    login_host: "{{ mysql_host }}"
+    login_port: "{{ mysql_port }}"
+    login_user: rancher
+    login_password: rancherpassword
+  when: inventory_hostname == groups["rancher-dev-server"][0]
+
+- name: Get installation script
+  include: get_installation_script.yml
+  when: inventory_hostname == groups["rancher-dev-server"][0] #and (not rancher_sn_installed|bool)
+
+
+- name: Push  installation scripts to all hosts
+  copy: 
+    src: /tmp/rancherha.sh  
+    dest: /tmp/rancher-ha.sh
+    mode: 0755
+
+- name: Run installation scripts on all hosts
+  shell: /tmp/rancher-ha.sh  
+
+- name: Wait for Rancher HA to be available
+  wait_for: host={{inventory_hostname}} port=80 delay=10 timeout=320 state=started

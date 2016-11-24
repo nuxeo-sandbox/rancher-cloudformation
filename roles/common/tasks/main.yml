@@ -1,0 +1,44 @@
+
+- name: Base packages
+  apt: name="{{item}}" state=present
+  with_items:
+    - locales
+    - unzip
+    - curl
+    - python-pygments
+    - python-mysqldb
+    - python-pip
+    - python-requests 
+    - python-lxml
+    - redis-tools
+    - screen
+    - wget
+    - atop
+    - sysstat
+
+- name: pip httplib2
+  # ansible uri module requires httplib2
+  pip: name=httplib2 extra_args="--user"
+
+- name: Check for /etc/default/locale
+  stat: path=/etc/default/locale
+  register: locale_path
+
+- name: Generate en_US.UTF-8 locale
+  shell: locale-gen en_US.UTF-8
+  when: locale_path.stat.exists == false
+
+- name: Reconfigure locales package
+  shell: dpkg-reconfigure locales
+  when: locale_path.stat.exists == false
+
+- name: Generate /etc/default/locale
+  shell: update-locale LANG=en_US.UTF-8
+  when: locale_path.stat.exists == false
+
+- name: Install some SSH keys
+  authorized_key: user={{ sshuser }}
+                  key="{{ lookup('file', item) }}"
+                  state=present
+  with_fileglob:
+    - id_rsa*

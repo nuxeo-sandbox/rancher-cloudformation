@@ -1,0 +1,24 @@
+---
+
+
+- name: Get registration token
+  uri:
+    # Can't use https because let's encrypt CA is not recognized by ansible...
+    url: http://{{rancher_host}}/v1/projects/{{rancher_project_id}}/registrationtokens?state=active&limit=-1
+    method: GET    
+  register: registrationToken
+
+- name: Start rancher agents
+  docker:    
+    image: "{{registrationToken.json.data[0].image}}"
+    state: reloaded
+    pull: always
+    privileged: true
+    command: "https://{{rancher_host}}/v1/scripts/{{registrationToken.json.data[0].token}}"
+    env:      
+      CATTLE_AGENT_IP: "{{ ansible_default_ipv4.address }}"
+      CATTLE_HOST_LABELS: "poolname=default"      
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/rancher:/var/lib/rancher
+  

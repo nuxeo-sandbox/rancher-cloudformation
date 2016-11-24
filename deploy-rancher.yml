@@ -1,0 +1,15 @@
+---
+
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  roles:
+    - role: cloudformation-rancher
+      
+
+- name: Deploy Rancher agents
+  hosts: rancher-agent-default
+  become: yes
+  roles:
+      - role: rancher-agent
+        rancher_host: rancherdev.io.nuxeo.com

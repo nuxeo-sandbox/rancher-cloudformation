@@ -1,0 +1,16 @@
+---
+- name: Provision Rancher HA cluster infrastructure on AWS
+  cloudformation:
+    stack_name: "{{ rancher_stackname }}"
+    state: "present"
+    region: "{{ aws_region }}"
+    template: "{{role_path}}/files/cf-rancher.template"
+    template_parameters:
+      AllowSSHFrom: "{{aws_allow_ssh_from}}"
+      Profile: "{{aws_profile}}"
+      KeyPair: "{{ aws_key_name }}"      
+      HostedZone: "{{ aws_hostedzone_name }}"      
+      RancherEndPoint: "{{ rancher_endpoint }}"
+      AgentCatchAll: "{{ rancher_agent_endpoint }}"
+      Environment: "{{ aws_environment }}"
+  register: cf_rancher

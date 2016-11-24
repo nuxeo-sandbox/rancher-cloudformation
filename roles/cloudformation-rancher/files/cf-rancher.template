@@ -86,6 +86,11 @@ Parameters:
     Description: "Cluster profile (in prod, preprod, test or stress)"
     Type: "String"
 
+  Environment:
+    Description: the name of the environment (test / dev / prod)
+    Default: "test"
+    Type: String
+
   KeyPair:
     Description: The name of an EC2 Key Pair to allow SSH access to the instance
     Type: String
@@ -101,8 +106,8 @@ Parameters:
     Default: rancherdev.io.nuxeo.com
     Type: String
 
-  GogetaCatchall:
-    Description: Catchall adress in the hosted zone to Gogeta instances    
+  AgentCatchAll:
+    Description: Catchall adress in the hosted zone to agent instances    
     Default: "*.dev.io.nuxeo.com"
     ConstraintDescription: "must start with a *."
     AllowedPattern: "\\*\\..*"
@@ -307,7 +312,14 @@ Resources:
       ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]          
       InstanceType: "t2.medium"
       KeyName: !Ref KeyPair
-      UserData: ""
+      UserData: !Base64 |
+        #!/bin/bash
+
+        # Increase open files limit
+        echo '*       soft    nofile      4096' >> /etc/security/limits.conf
+        echo '*       hard    nofile      8192' >> /etc/security/limits.conf
+
+
       NetworkInterfaces: 
         - AssociatePublicIpAddress: "true"
           DeviceIndex: "0"
@@ -320,6 +332,8 @@ Resources:
           Value: !Sub "${AWS::StackName}-bastion-instance"
         - Key: Role
           Value: bastion
+        - Key: nuxeo-ansible-group
+          Value: !Sub rancher-${Environment}-bastion
       
   
 
@@ -519,13 +533,17 @@ Resources:
           PropagateAtLaunch: true
         - Key: Role
           Value: rancherserver
+          PropagateAtLaunch: true
+        - Key: nuxeo-ansible-group
+          Value: !Sub rancher-${Environment}-rancherserver
+          PropagateAtLaunch: true
       VPCZoneIdentifier: 
          - !Ref "RancherSubnetA"
          - !Ref "RancherSubnetB"
          
   RancherClusterLaunchConfig:  
     Type: "AWS::AutoScaling::LaunchConfiguration"    
-    Properties:
+    Properties:      
       AssociatePublicIpAddress: false
       BlockDeviceMappings: 
         - DeviceName: "/dev/sda1"
@@ -537,39 +555,13 @@ Resources:
       KeyName: !Ref KeyPair
       SecurityGroups: 
         - !Ref "RancherSG"
-      UserData: 
-        Fn::Base64:
-          !Sub
-            - |
-              #!/bin/bash
+      UserData: !Base64 |
+        #!/bin/bash
 
-              sudo apt-get update
-              sudo apt-get install -y apt-transport-https ca-certificates
-              sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+        # Increase open files limit
+        echo '*       soft    nofile      4096' >> /etc/security/limits.conf
+        echo '*       hard    nofile      8192' >> /etc/security/limits.conf
 
-              echo deb https://apt.dockerproject.org/repo ubuntu-wily main > /etc/apt/sources.list.d/docker.list
-
-              sudo apt-get update
-              sudo apt-get purge lxc-docker
-              apt-cache policy docker-engine
-
-              sudo apt-get install -y linux-image-extra-$(uname -r) linux-image-extra-virtual
-              sudo apt-get install -y docker-engine
-              sudo service docker start
-
-              sudo systemctl enable docker
-
-              #sudo docker run -d -p 8080:8080 \
-              #  -e CATTLE_DB_CATTLE_MYSQL_HOST=${mysqlhost} \
-              #  -e CATTLE_DB_CATTLE_MYSQL_PORT=${mysqlport} \
-              #  -e CATTLE_DB_CATTLE_MYSQL_NAME=rancherdb \
-              #  -e CATTLE_DB_CATTLE_USERNAME=rancher \
-              #  -e CATTLE_DB_CATTLE_PASSWORD=rancherpassword \
-              #  -v /var/run/docker.sock:/var/run/docker.sock \
-              #  --name rancher-server \
-              #   rancher/server
-            - mysqlhost: !GetAtt [ RancherDB, Endpoint.Address ]
-              mysqlport: !GetAtt [ RancherDB, Endpoint.Port ] 
 
 
   ClusterSubnetA:
@@ -696,7 +688,7 @@ Resources:
     Properties:
       AvailabilityZones: 
         - !Select [ 0, !GetAZs  ""]
-        - !Select [ 1, !GetAZs  ""]
+        - !Select [ 1, !GetAZs  ""]      
       DesiredCapacity: !FindInMap [ Profiles, !Ref Profile, InitialClusterSize ]
       LaunchConfigurationName: !Ref "AgentClusterLaunchConfig"
       LoadBalancerNames: [!Ref "GogetaHttpLB"]
@@ -711,6 +703,10 @@ Resources:
           PropagateAtLaunch: true
         - Key: Role
           Value: rancheragent
+          PropagateAtLaunch: true
+        - Key: nuxeo-ansible-group
+          Value: !Sub rancher-${Environment}-rancheragent-default
+          PropagateAtLaunch: true
       VPCZoneIdentifier: 
          - !Ref "ClusterSubnetA"
          - !Ref "ClusterSubnetB"
@@ -729,29 +725,14 @@ Resources:
       KeyName: !Ref KeyPair
       SecurityGroups: 
         - !Ref "RancherSG"
-      UserData: 
-        Fn::Base64:
-          !Sub
-            - |
-              #!/bin/bash
+      UserData: !Base64 |
+        #!/bin/bash
 
-              sudo apt-get update
-              sudo apt-get install -y apt-transport-https ca-certificates
-              sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+        # Increase open files limit
+        echo '*       soft    nofile      4096' >> /etc/security/limits.conf
+        echo '*       hard    nofile      8192' >> /etc/security/limits.conf
 
-              echo deb https://apt.dockerproject.org/repo ubuntu-wily main > /etc/apt/sources.list.d/docker.list
 
-              sudo apt-get update
-              sudo apt-get purge lxc-docker
-              apt-cache policy docker-engine
-
-              sudo apt-get install -y linux-image-extra-$(uname -r) linux-image-extra-virtual
-              sudo apt-get install -y docker-engine
-              sudo service docker start
-
-              sudo systemctl enable docker
-            - rancherhost: !Ref RancherEndPoint
-              
 
 
   RancherDNSRecord:
@@ -770,7 +751,6 @@ Resources:
       Type: CNAME
       TTL: 300
       HostedZoneName: !Sub "${HostedZone}."
-      Name: !Ref GogetaCatchall
+      Name: !Ref AgentCatchAll
       ResourceRecords: 
         - !GetAtt [ GogetaHttpLB, DNSName ]
-
