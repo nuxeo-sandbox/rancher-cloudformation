@@ -1,0 +1,15 @@
+Host 10.0.*.*
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  User ubuntu
+  ProxyCommand ssh -W %h:%p ubuntu@{{ bastion_host }}
+  IdentityFile ~/.ssh/id_rsa
+
+Host  {{ bastion_host }}
+  StrictHostKeyChecking no
+  Hostname  {{ bastion_host }}
+  IdentityFile ~/.ssh/id_rsa
+  User ubuntu
+  ControlMaster auto
+  ControlPath ~/.ssh/ansible-%r@%h:%p
+  ControlPersist 5m

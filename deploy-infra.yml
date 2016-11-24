@@ -7,6 +7,13 @@
     - role: cloudformation-rancher
       inventory_groups: rancher-dev
 
+- hosts: localhost
+  connection: local
+  gather_facts: no
+  roles:
+    - role: sshconfig
+      bastion_host : "{{hostvars[groups['rancher-bastion'][0]]['ec2_ip_address']}}"
+
 - hosts: rancher-dev
   tags: ensurepython
   gather_facts: False
