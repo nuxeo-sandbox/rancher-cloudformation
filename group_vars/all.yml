@@ -1,0 +1,5 @@
+---
+aws_region: "us-west-1"
+aws_allow_ssh_from: "0.0.0.0/0"
+aws_key_name: "dmetzler"
+

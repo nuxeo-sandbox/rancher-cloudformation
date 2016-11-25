@@ -23,33 +23,29 @@ Mappings:
     us-west-2:
       AMI: ami-e1fe2281
 
-  Profiles:
-    test:
-      InitialClusterSize: 3
+  AgentCluster:
+{% for name,agent in rancher_agent_clusters.iteritems() %}
+    {{name}}:
+      ClusterSize: {{agent.size}}
+      InstanceType: {{agent.ec2_instance_type}}
+      AllocatedStorage: {{agent.ec2_storage}}
+{% endfor %}
+
+  
+  RancherProfile:
+    dev:
+      
       DBAllocatedStorage: 10
       DBBackupRetentionPeriod: 0
       DBInstanceType: db.t2.medium
-      RancherInstanceType: t2.large
-      ClusterInstanceType: t2.large
       DBMultiAZ: false
+      
+      RancherClusterSize: 3
+      RancherAllocatedStorage: 20
+      RancherInstanceType: t2.large      
+      
 
-    preprod:
-      InitialClusterSize: 3
-      DBAllocatedStorage: 10
-      DBBackupRetentionPeriod: 1
-      DBInstanceType: db.m3.large
-      RancherInstanceType: m3.large
-      ClusterInstanceType: m3.xlarge
-      DBMultiAZ: true
-
-    prod:
-      InitialClusterSize: 3
-      DBAllocatedStorage: 10
-      DBBackupRetentionPeriod: 7
-      DBInstanceType: db.m3.large
-      RancherInstanceType: c3.2xlarge
-      ClusterInstanceType: m3.2xlarge
-      DBMultiAZ: true
+    
 
 Outputs:
   AWSRegion:
@@ -64,6 +60,14 @@ Outputs:
     Description: Port of Rancher's database
     Value: !GetAtt [ RancherDB, Endpoint.Port ]
 
+  RancherELBDns:
+    Description: DNS name of the ELB that points to the Rancher cluster 
+    Value: !GetAtt [ RancherHttpLB, DNSName ]
+
+  DefaultAgentELBDns:
+    Description: DNS name of the ELB that points to the Default Agent cluster 
+    Value: !GetAtt [ GogetaHttpLB, DNSName ]
+
 
 Parameters:
   AllowSSHFrom:
@@ -76,20 +80,14 @@ Parameters:
     Type: "String"
 
   Profile:
-    Default: test
+    Default: dev
     AllowedValues: 
       - prod
       - preprod
-      - test
-      - stress
-    Default: "test"
-    Description: "Cluster profile (in prod, preprod, test or stress)"
+      - dev
+    Default: "dev"
+    Description: "Cluster profile (in prod, preprod or dev)"
     Type: "String"
-
-  Environment:
-    Description: the name of the environment (test / dev / prod)
-    Default: "test"
-    Type: String
 
   KeyPair:
     Description: The name of an EC2 Key Pair to allow SSH access to the instance
@@ -98,17 +96,14 @@ Parameters:
 
   HostedZone: 
     Description: The name of the zone where we put DNS recordsets
-    Default: io.nuxeo.com
     Type: String
 
   RancherEndPoint:
     Description: Rancher endpoint in the hosted zone
-    Default: rancherdev.io.nuxeo.com
     Type: String
 
   AgentCatchAll:
     Description: Catchall adress in the hosted zone to agent instances    
-    Default: "*.dev.io.nuxeo.com"
     ConstraintDescription: "must start with a *."
     AllowedPattern: "\\*\\..*"
     Type: String
@@ -118,7 +113,6 @@ Parameters:
 
 
 Resources:
-
   
   # Define the global VPC
   CloudVPC:
@@ -333,7 +327,7 @@ Resources:
         - Key: Role
           Value: bastion
         - Key: nuxeo-ansible-group
-          Value: !Sub rancher-${Environment}-bastion
+          Value: !Sub rancher-${Profile}-bastion
       
   
 
@@ -460,12 +454,12 @@ Resources:
       DBInstanceIdentifier: !Sub "${AWS::StackName}-db"
       DBName: "rancherdb"
       DBSubnetGroupName: !Ref RancherDBSubnetGroup
-      AllocatedStorage: !FindInMap [ Profiles, !Ref Profile, DBAllocatedStorage ]
+      AllocatedStorage: !FindInMap [ RancherProfile, !Ref Profile, DBAllocatedStorage ]
       VPCSecurityGroups: 
         - !Ref RancherSG
-      BackupRetentionPeriod: !FindInMap [ Profiles, !Ref Profile, DBBackupRetentionPeriod ]
-      DBInstanceClass: !FindInMap [ Profiles, !Ref Profile, DBInstanceType ]
-      MultiAZ: !FindInMap [ Profiles, !Ref Profile, DBMultiAZ ]
+      BackupRetentionPeriod: !FindInMap [ RancherProfile, !Ref Profile, DBBackupRetentionPeriod ]
+      DBInstanceClass: !FindInMap [ RancherProfile, !Ref Profile, DBInstanceType ]
+      MultiAZ: !FindInMap [ RancherProfile, !Ref Profile, DBMultiAZ ]
       MasterUsername: rancher
       MasterUserPassword: rancherpassword
       Tags: 
@@ -535,7 +529,7 @@ Resources:
           Value: rancherserver
           PropagateAtLaunch: true
         - Key: nuxeo-ansible-group
-          Value: !Sub rancher-${Environment}-rancherserver
+          Value: !Sub rancher-${Profile}-rancherserver
           PropagateAtLaunch: true
       VPCZoneIdentifier: 
          - !Ref "RancherSubnetA"
@@ -549,9 +543,9 @@ Resources:
         - DeviceName: "/dev/sda1"
           Ebs: 
             DeleteOnTermination:  true
-            VolumeSize: "20"
+            VolumeSize: !FindInMap [ RancherProfile, !Ref Profile, RancherAllocatedStorage]
       ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
-      InstanceType: !FindInMap [ Profiles, !Ref Profile, RancherInstanceType ]
+      InstanceType: !FindInMap [ RancherProfile, !Ref Profile, RancherInstanceType ]
       KeyName: !Ref KeyPair
       SecurityGroups: 
         - !Ref "RancherSG"
@@ -682,15 +676,16 @@ Resources:
         - Key: Name
           Value: !Sub "${AWS::StackName}-gogeta-http-lb"      
 
+{% for name,agent in rancher_agent_clusters.iteritems() %}
 
-  AgentClusterAutoScale:
+  {{name | capitalize}}AgentClusterAutoScale:
     Type: "AWS::AutoScaling::AutoScalingGroup"
     Properties:
       AvailabilityZones: 
         - !Select [ 0, !GetAZs  ""]
         - !Select [ 1, !GetAZs  ""]      
-      DesiredCapacity: !FindInMap [ Profiles, !Ref Profile, InitialClusterSize ]
-      LaunchConfigurationName: !Ref "AgentClusterLaunchConfig"
+      DesiredCapacity: !FindInMap [ AgentCluster, {{name}}, ClusterSize ]
+      LaunchConfigurationName: !Ref "{{name | capitalize}}AgentClusterLaunchConfig"
       LoadBalancerNames: [!Ref "GogetaHttpLB"]
       MaxSize: 12
       MinSize: 1
@@ -699,32 +694,37 @@ Resources:
           Value: !Ref "AWS::StackName"
           PropagateAtLaunch: true
         - Key: Name
-          Value: !Sub "${AWS::StackName}-rancher-agent-autoscale"      
+          Value: !Sub "${AWS::StackName}-rancher-agent-{{name}}-autoscale"      
           PropagateAtLaunch: true
         - Key: Role
           Value: rancheragent
           PropagateAtLaunch: true
         - Key: nuxeo-ansible-group
-          Value: !Sub rancher-${Environment}-rancheragent-default
+          Value: !Sub rancher-{{deployment_profile}}-rancheragent-{{name}}
           PropagateAtLaunch: true
       VPCZoneIdentifier: 
          - !Ref "ClusterSubnetA"
          - !Ref "ClusterSubnetB"
          
-  AgentClusterLaunchConfig:  
+
+
+  {{name | capitalize}}AgentClusterLaunchConfig:  
     Type: "AWS::AutoScaling::LaunchConfiguration"    
     Properties:
       AssociatePublicIpAddress: false
+      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
+      InstanceType: !FindInMap [ AgentCluster, {{name}}, InstanceType ]
+      KeyName: !Ref KeyPair
+
       BlockDeviceMappings: 
         - DeviceName: "/dev/sda1"
           Ebs: 
             DeleteOnTermination:  true
-            VolumeSize: "20"
-      ImageId: !FindInMap [ RegionMap, !Ref "AWS::Region", AMI ]
-      InstanceType: !FindInMap [ Profiles, !Ref Profile, ClusterInstanceType ]
-      KeyName: !Ref KeyPair
+            VolumeSize: !FindInMap [ AgentCluster, {{name}}, AllocatedStorage ]
+            VolumeType: gp2
+        
       SecurityGroups: 
-        - !Ref "RancherSG"
+        - !Ref "ClusterSG"
       UserData: !Base64 |
         #!/bin/bash
 
@@ -732,9 +732,10 @@ Resources:
         echo '*       soft    nofile      4096' >> /etc/security/limits.conf
         echo '*       hard    nofile      8192' >> /etc/security/limits.conf
 
+{% endfor %}
 
 
-
+{% if aws_hostedzone_name is defined and rancher_endpoint is defined %}
   RancherDNSRecord:
     Type: "AWS::Route53::RecordSet"
     Properties:
@@ -744,7 +745,9 @@ Resources:
       Name: !Ref RancherEndPoint
       ResourceRecords: 
         - !GetAtt [ RancherHttpLB, DNSName ]
+{% endif %}
 
+{% if aws_hostedzone_name is defined and rancher_agent_endpoint is defined %}
   GogetaDNSRecord:
     Type: "AWS::Route53::RecordSet"
     Properties:
@@ -754,3 +757,4 @@ Resources:
       Name: !Ref AgentCatchAll
       ResourceRecords: 
         - !GetAtt [ GogetaHttpLB, DNSName ]
+{%endif %}

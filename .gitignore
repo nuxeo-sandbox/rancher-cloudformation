@@ -2,4 +2,5 @@ venv
 *.pyc
 tmp/ssh.cfg
 tmp/rancherha.sh
+tmp/cf-rancher.yml
 *.retry

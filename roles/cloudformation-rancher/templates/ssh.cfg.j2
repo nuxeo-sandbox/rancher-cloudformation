@@ -2,12 +2,12 @@ Host 10.0.*.*
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   User ubuntu
-  ProxyCommand ssh -W %h:%p ubuntu@{{ bastion_host }}
+  ProxyCommand ssh -W %h:%p ubuntu@{{hostvars[groups['rancher-bastion'][0]]['ec2_ip_address']}}
   IdentityFile ~/.ssh/id_rsa
 
-Host  {{ bastion_host }}
+Host  {{hostvars[groups['rancher-bastion'][0]]['ec2_ip_address']}}
   StrictHostKeyChecking no
-  Hostname  {{ bastion_host }}
+  Hostname  {{hostvars[groups['rancher-bastion'][0]]['ec2_ip_address']}}
   IdentityFile ~/.ssh/id_rsa
   User ubuntu
   ControlMaster auto

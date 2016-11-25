@@ -1,0 +1,4 @@
+---
+
+rancher_image: rancher/server
+rancher_image_tag: latest

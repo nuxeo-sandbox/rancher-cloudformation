@@ -53,5 +53,5 @@
   when: "{{not rancher_ha_installed | bool }}"
 
 - name: Wait for Rancher HA to be available
-  wait_for: host={{inventory_hostname}} port=80 delay=10 timeout=320 state=started
+  wait_for: host={{inventory_hostname}} port=80 timeout=600 state=started
 

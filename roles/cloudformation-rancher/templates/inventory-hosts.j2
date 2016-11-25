@@ -31,20 +31,16 @@ tag_nuxeo-ansible-group_rancher-dev-rancherserver
 
 
 [rancher-agent:children]
-rancher-agent-default
-rancher-agent-other
+{% for name,agent in rancher_agent_clusters.iteritems() %}
+rancher-agent-{{name}}
+{% endfor %}
 
-[rancher-agent-default:vars]
-agent_profile=default
-[rancher-agent-default:children]
-tag_nuxeo-ansible-group_rancher-dev-rancheragent-default
+{% for name,agent in rancher_agent_clusters.iteritems() %}
+[rancher-agent-{{name}}:vars]
+agent_profile={{name}}
+[rancher-agent-{{name}}:children]
+tag_nuxeo-ansible-group_rancher-dev-rancheragent-{{name}}
 
-[tag_nuxeo-ansible-group_rancher-dev-rancheragent-default]
+[tag_nuxeo-ansible-group_rancher-dev-rancheragent-{{name}}]
 
-[rancher-agent-other:vars]
-agent_profile=other
-[rancher-agent-other:children]
-tag_nuxeo-ansible-group_rancher-dev-rancheragent-other
-
-[tag_nuxeo-ansible-group_rancher-dev-rancheragent-other]
-
+{% endfor %}

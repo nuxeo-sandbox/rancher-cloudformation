@@ -1,28 +1,15 @@
 ---
 
-- name: Wait for rancher to be available on public HTTP URL
-  wait_for: host={{rancher_host}} port=80 delay=10 timeout=320 state=started
-
-- name: Wait for rancher to be available on public HTTPs URL
-  wait_for: host={{rancher_host}} port=443 delay=10 timeout=320 state=started
-
-- name: Get registration token
-  uri:
-    # Can't use https because let's encrypt CA is not recognized by ansible...
-    url: http://{{rancher_host}}/v1/projects/{{rancher_project_id}}/registrationtokens?state=active&limit=-1
-    method: GET    
-  register: registrationToken
-
 - name: Start rancher agents
   docker:    
-    image: "{{registrationToken.json.data[0].image}}"
+    image: rancher/agent
     state: reloaded
     pull: always
     privileged: true
-    command: "https://{{rancher_host}}/v1/scripts/{{registrationToken.json.data[0].token}}"
+    command: "https://{{rancher_host}}/v1/scripts/{{rancher_project_token}}"
     env:      
       CATTLE_AGENT_IP: "{{ ansible_default_ipv4.address }}"
-      CATTLE_HOST_LABELS: "poolname=default"      
+      CATTLE_HOST_LABELS: "{{ rancher_agent_tags }}"  
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/rancher:/var/lib/rancher

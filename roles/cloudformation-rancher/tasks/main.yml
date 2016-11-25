@@ -1,18 +1,25 @@
 ---
+
+- name: Generate CloudFormation template
+  template: src=cf-rancher.yml.j2 dest=tmp/cf-rancher.yml
+
+- name: Generate inventory host file
+  template: src=inventory-hosts.j2 dest=inventory/rancher-{{deployment_profile}}/hosts
+
+
 - name: Provision Rancher HA cluster infrastructure on AWS
   cloudformation:
-    stack_name: "{{ rancher_stackname }}"
+    stack_name: "{{ rancher_stackname }}-{{ deployment_profile }}"
     state: "present"
     region: "{{ aws_region }}"
-    template: "{{role_path}}/files/cf-rancher.template"
+    template: "tmp/cf-rancher.yml"
     template_parameters:
       AllowSSHFrom: "{{aws_allow_ssh_from}}"
-      Profile: "{{aws_profile}}"
+      Profile: "{{deployment_profile}}"
       KeyPair: "{{ aws_key_name }}"      
       HostedZone: "{{ aws_hostedzone_name }}"      
       RancherEndPoint: "{{ rancher_endpoint }}"
-      AgentCatchAll: "{{ rancher_agent_endpoint }}"
-      Environment: "{{ aws_environment }}"
+      AgentCatchAll: "{{ rancher_agent_endpoint }}"      
   register: cf_rancher
 
 - name: Pause if changed
@@ -22,3 +29,9 @@
 - name : Refresh inventory if needed
   meta: refresh_inventory
   when: cf_rancher.changed
+
+- name: Create local ssh.cfg to tunnel ssh connections thru bastion
+  template: src=ssh.cfg.j2 dest=tmp/ssh.cfg
+  when: "({{groups['rancher-bastion'] | length}} > 0 | bool)"
+  delegate_to: localhost
+

@@ -1,11 +1,10 @@
 ---
 
-rancher_stackname: "nuxeocloud"
+rancher_stackname: "rancher"
 aws_region: "us-west-1"
 aws_allow_ssh_from: "0.0.0.0/0"
-aws_profile: "test"
 aws_key_name: "dmetzler"
-aws_hostedzone_name: "io.nuxeo.com"
-rancher_endpoint: "rancherdev.io.nuxeo.com"
-rancher_agent_endpoint: "*.dev.io.nuxeo.com"
-aws_environment: dev
+
+# rancher_endpoint: "rancherdev.io.nuxeo.com"
+# aws_hostedzone_name: "io.nuxeo.com"
+# rancher_agent_endpoint: "*.dev.io.nuxeo.com"
