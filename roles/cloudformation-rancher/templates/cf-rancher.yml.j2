@@ -42,7 +42,17 @@ Mappings:
       
       RancherClusterSize: 3
       RancherAllocatedStorage: 20
-      RancherInstanceType: t2.large      
+      RancherInstanceType: t2.large  
+
+    prod:
+      DBAllocatedStorage: 100
+      DBBackupRetentionPeriod: 7
+      DBInstanceType: db.m4.4xlarge
+      DBMultiAZ: true
+      
+      RancherClusterSize: 3
+      RancherAllocatedStorage: 50
+      RancherInstanceType: m4.xlarge  
       
 
     
@@ -54,19 +64,19 @@ Outputs:
 
   DBHost:
     Description: Host of Rancher's database
-    Value: !GetAtt [ RancherDB, Endpoint.Address ]
+    Value: !GetAtt RancherDB.Endpoint.Address
 
   DBPort:
     Description: Port of Rancher's database
-    Value: !GetAtt [ RancherDB, Endpoint.Port ]
+    Value: !GetAtt RancherDB.Endpoint.Port
 
   RancherELBDns:
     Description: DNS name of the ELB that points to the Rancher cluster 
-    Value: !GetAtt [ RancherHttpLB, DNSName ]
+    Value: !GetAtt RancherApplicationLoadBalancer.DNSName
 
   DefaultAgentELBDns:
     Description: DNS name of the ELB that points to the Default Agent cluster 
-    Value: !GetAtt [ GogetaHttpLB, DNSName ]
+    Value: !GetAtt GogetaHttpLB.DNSName
 
 
 Parameters:
@@ -386,11 +396,11 @@ Resources:
         - SourceSecurityGroupId: !Ref ELBSG
           FromPort: "80"
           IpProtocol: "tcp"
-          ToPort: "8080"
+          ToPort: "80"
         - SourceSecurityGroupId: !Ref ELBSG
           FromPort: "443"
           IpProtocol: "tcp"
-          ToPort: "8080"      
+          ToPort: "443"      
       VpcId: !Ref CloudVPC
       Tags: 
         - Key: IoCluster
@@ -470,42 +480,49 @@ Resources:
         - Key: Role
           Value: rancherdb
 
-  RancherHttpLB:
-    Type: "AWS::ElasticLoadBalancing::LoadBalancer"
-    DependsOn: IgAttachment
+
+  RancherALBListener:
+    Type : AWS::ElasticLoadBalancingV2::Listener
     Properties:
-      ConnectionDrainingPolicy:
-        Enabled: "true"
-        Timeout: "300"
-      CrossZone: true
-      HealthCheck:
-        HealthyThreshold: "3"
-        Interval: "30"
-        Target: TCP:80
-        Timeout: "5"
-        UnhealthyThreshold: "5"
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref RancherALBTargetGroup8080
+      LoadBalancerArn: !Ref RancherApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
 
-      Listeners:
-        - InstancePort: 80
-          LoadBalancerPort: 80
-          Protocol: TCP
-        - InstancePort: 443
-          LoadBalancerPort: 443
-          Protocol: TCP
-        - InstancePort: 8080
-          LoadBalancerPort: 8080
-          Protocol: TCP
-      SecurityGroups: 
-        - !Ref "ELBSG"
+  RancherALBListenerHTTPS:
+    Type : AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref RancherALBTargetGroup8080
+      LoadBalancerArn: !Ref RancherApplicationLoadBalancer
+      Certificates:
+        - CertificateArn: {{rancher_certificate_arn}}
+      Port: 443
+      Protocol: HTTPS
+  
+  RancherApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
       Subnets:
-        - !Ref "PublicSubnetA"        
-        - !Ref "PublicSubnetB"        
-      Tags: 
-        - Key: IoCluster
-          Value: !Ref "AWS::StackName"
-        - Key: Name
-          Value: !Sub "${AWS::StackName}-rancher-http-lb"      
+        - !Ref PublicSubnetA
+        - !Ref PublicSubnetB
+      SecurityGroups:
+        - !Ref "ELBSG"
 
+  RancherALBTargetGroup8080:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      UnhealthyThresholdCount: 5
+      HealthCheckPath: /
+      Name: RancherServerTargetGroup8080
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref CloudVPC
 
   RancherClusterAutoScale:
     Type: "AWS::AutoScaling::AutoScalingGroup"
@@ -514,10 +531,11 @@ Resources:
         - !Select [ 0, !GetAZs  ""]
         - !Select [ 1, !GetAZs  ""]
       DesiredCapacity: 3
-      LaunchConfigurationName: !Ref "RancherClusterLaunchConfig"
-      LoadBalancerNames: [!Ref "RancherHttpLB"]
+      LaunchConfigurationName: !Ref "RancherClusterLaunchConfig"      
       MaxSize: 3
       MinSize: 1
+      TargetGroupARNs:
+        - !Ref RancherALBTargetGroup8080
       Tags: 
         - Key: IoCluster
           Value: !Ref "AWS::StackName"
@@ -744,7 +762,7 @@ Resources:
       HostedZoneName: !Sub "${HostedZone}."
       Name: !Ref RancherEndPoint
       ResourceRecords: 
-        - !GetAtt [ RancherHttpLB, DNSName ]
+        - !GetAtt RancherApplicationLoadBalancer.DNSName
 {% endif %}
 
 {% if aws_hostedzone_name is defined and rancher_agent_endpoint is defined %}
@@ -756,5 +774,5 @@ Resources:
       HostedZoneName: !Sub "${HostedZone}."
       Name: !Ref AgentCatchAll
       ResourceRecords: 
-        - !GetAtt [ GogetaHttpLB, DNSName ]
+        - !GetAtt GogetaHttpLB.DNSName
 {%endif %}

@@ -16,6 +16,8 @@ deployment_profile: "dev"
 # Adress where Rancher will be available
 rancher_endpoint: "rancherdev.io.nuxeo.com"
 
+rancher_certificate_arn: arn:aws:iam::188670881089:server-certificate/rancherdev.io.nuxeo.com
+
 # The Cloudformation script can automatically setup Route53 to point
 # the two ELB of the setup, but it needs to know the hosted zone.
 # Currently Rancher and Agents DNS name must be in the same zone
@@ -23,9 +25,11 @@ aws_hostedzone_name: "io.nuxeo.com"
 rancher_agent_endpoint: "*.dev.io.nuxeo.com"
 
 
+
 # Setup of the agent clusters. For each cluster you can define differents 
 # parameters
 rancher_agent_clusters:
+
   default:
     # Number of agent hosts in that group
     size: 1
@@ -34,7 +38,7 @@ rancher_agent_clusters:
     # Storage allcated for each server
     ec2_storage: 30
     # Project token that will be used to register 
-    rancher_project_token: B64F080D160014784341:1480064400000:Y88o3ACI0UQeM9SNXemsid4avU
+    rancher_project_token: 80F6AA6195F669586D11:1481072400000:OZSGMBYcSxZYtocL9gfxyJc
     # Rancher tags that will be set on the agents
     rancher_agent_tags: "pool=default, storage=large"
 
@@ -42,5 +46,5 @@ rancher_agent_clusters:
     size: 2
     ec2_instance_type: t2.large
     ec2_storage: 20
-    rancher_project_token: B64F080D160014784341:1480064400000:Y88o3ACI0UQeM9SNXemsid4avU
+    rancher_project_token: 80F6AA6195F669586D11:1481072400000:OZSGMBYcSxZYtocL9gfxyJc
     rancher_agent_tags: "pool=other, storage=small"

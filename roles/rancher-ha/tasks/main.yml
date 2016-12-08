@@ -1,56 +1,26 @@
 ---
 
-# Should find a better way than handling an error
-- name: Check if Rancher HA container is running 
-  command: /usr/bin/docker inspect rancher-ha
-  register: rancher_result
-  ignore_errors: true
-
-- name: Define rancher_ha_installed variable
-  set_fact:
-    rancher_ha_installed: "{{rancher_result.rc  == 0 }}"  
 
 - name: Rancher database creation
   mysql_db:
-    name: rancher
+    name: cattle
     login_host: "{{ mysql_host }}"
     login_port: "{{ mysql_port }}"
     login_user: rancher
     login_password: rancherpassword
   when: inventory_hostname == groups["rancher-server"][0] 
 
-- name: Ensure /var/lib/rancher is created
-  file: path=/var/lib/rancher state=directory mode=0755
+- name: Launch Rancher docker container
+  docker_container:
+    name: rancher-ha
+    image: rancher/server
+    command: --db-host {{ mysql_host }} --db-port {{ mysql_port }} --db-user rancher --db-pass rancherpassword --db-name cattle --advertise-address {{ ansible_default_ipv4.address }}
+    state: started
+    recreate: yes
+    published_ports:
+      - 9345:9345
+      - 8080:8080
 
-- name: Get installation script
-  include: get_installation_script.yml
-  when: inventory_hostname == groups["rancher-server"][0] 
-
-- name: Check existence of rancher-ha.sh
-  stat: path=/var/lib/rancher/rancher-ha.sh
-  register: rancher_ha_script
-
-
-- name: Push installation scripts to all hosts
-  copy: 
-    src: tmp/rancherha.sh  
-    dest: /var/lib/rancher/rancher-ha.sh
-    mode: 0755
-  when: "{{not rancher_ha_script.stat.exists | bool }}"
-
-- name: Force enable HA in startup script
-  lineinfile:
-    dest: /var/lib/rancher/rancher-ha.sh
-    regexp: '^# export CATTLE_HA_ENABLED=true'
-    line: 'export CATTLE_HA_ENABLED=true'
-    backrefs: yes
-
-- name: Ensure HA script is executable
-  file: path=/var/lib/rancher/rancher-ha.sh mode=0755
-
-- name: Run installation scripts on all hosts
-  shell: /var/lib/rancher/rancher-ha.sh  
-  when: "{{not rancher_ha_installed | bool }}"
 
 - name: Wait for Rancher HA to be available
   wait_for: host={{inventory_hostname}} port=80 timeout=600 state=started
